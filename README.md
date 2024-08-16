@@ -24,7 +24,7 @@ git clone https://github.com/yourusername/public-ip-dns-updater.git
 2. Change into the project directory:
 
 ```bash
-cd public-ip-dns-updater
+cd auto-domain
 ```
 
 3. Create a virtual environment and install the required Python packages using Pipenv:
