@@ -6,15 +6,33 @@ from pydo import Client
 DOMAIN_NAME = os.environ.get('DOMAIN_NAME', None)
 IPV4_SUBDOMAIN = os.environ.get('IPV4_SUBDOMAIN', None)
 IPV6_SUBDOMAIN = os.environ.get('IPV6_SUBDOMAIN', None)
+COMBINED_SUBDOMAIN = os.environ.get('COMBINED_SUBDOMAIN', None)
 DIGITALOCEAN_TOKEN = os.environ.get('DIGITALOCEAN_TOKEN', None)
 
-def validIPAddress(IP: str) -> str:
+def validIPAddress(ip: str) -> str:
     try:
-        return "IPv4" if type(ip_address(IP)) is IPv4Address else "IPv6"
+        return "IPv4" if type(ip_address(ip)) is IPv4Address else "IPv6"
     except ValueError:
         return "Invalid"
+    
+def update_record(do_client: Client, record_id: str | None, record_data: str | None, subdomain: str, ip: str | None, type: str = 'A', ttl: int = 60):
+    req = {
+        "type": type,
+        "name": subdomain,
+        "data": ip,
+        "ttl": ttl,
+    }
+    if ip is not None and record_id is None:
+        do_client.domains.create_record(domain_name=DOMAIN_NAME, body=req)
+        print("Created A " + subdomain + "." + DOMAIN_NAME + " " + ip)
+    elif ip and record_id is not None and record_data != ip:
+        do_client.domains.update_record(domain_name=DOMAIN_NAME, domain_record_id=record_id, body=req)
+        print("Updated A " + subdomain + "." + DOMAIN_NAME + " " + ip)
+    elif ip is None and record_id is not None:
+        do_client.domains.delete_record(domain_name=DOMAIN_NAME, domain_record_id=record_id)
+        print("Deleted A " + subdomain + "." + DOMAIN_NAME + " " + record_data)
 
-def main(set_ipv4: bool, set_ipv6: bool):
+def main(set_ipv4: bool, set_ipv6: bool, set_combined: bool):
     # Retrieve IPv4 address
     r1 = requests.get("https://api.ipify.org?format=json")
 
@@ -67,40 +85,40 @@ def main(set_ipv4: bool, set_ipv6: bool):
 
     # Update DigitalOcean records
     if set_ipv4:
-        req_ipv4 = {
-            "type": "A",
-            "name": IPV4_SUBDOMAIN,
-            "data": ipv4,
-            "ttl": 60,
-        }
-        if ipv4 and record_id_ipv4 is None:
-            client.domains.create_record(domain_name=DOMAIN_NAME, body=req_ipv4)
-            print("Created A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv4)
-        elif ipv4 and record_id_ipv4 is not None and record_data_ipv4 != ipv4:
-            client.domains.update_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv4, body=req_ipv4)
-            print("Updated A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv4)
-        elif ipv4 is None and record_id_ipv4 is not None:
-            client.domains.delete_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv4)
-            print("Deleted A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + record_data_ipv4)
+        update_record(do_client = client,
+                      record_id = record_id_ipv4,
+                      record_data = record_data_ipv4,
+                      subdomain = IPV4_SUBDOMAIN,
+                      ip = ipv4,
+                      type='A',
+                      ttl=60)
 
     if set_ipv6:
-        req_ipv6 = {
-            "type": "AAAA",
-            "name": IPV6_SUBDOMAIN,
-            "data": ipv6,
-            "ttl": 60,
-        }
-        if ipv6 and record_id_ipv6 is None:
-            client.domains.create_record(domain_name=DOMAIN_NAME, body=req_ipv6)
-            print("Created AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv6)
-        elif ipv6 and record_id_ipv6 is not None and record_data_ipv6 != ipv6:
-            client.domains.update_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv6, body=req_ipv6)
-            print("Updated AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv6)
-        elif ipv6 is None and record_id_ipv6 is not None:
-            client.domains.delete_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv6)
-            print("Deleted AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + record_data_ipv6)
-    else:
-        print("IPv6 record update disabled")
+        update_record(do_client = client,
+                      record_id = record_id_ipv6,
+                      record_data = record_data_ipv6,
+                      subdomain = IPV6_SUBDOMAIN,
+                      ip = ipv6,
+                      type='AAAA',
+                      ttl=60)
+
+    if set_combined:
+        update_record(do_client = client,
+                      record_id = record_id_ipv4,
+                      record_data = record_data_ipv4,
+                      subdomain = COMBINED_SUBDOMAIN,
+                      ip = ipv4,
+                      type='A',
+                      ttl=60)
+
+        update_record(do_client = client,
+                      record_id = record_id_ipv6,
+                      record_data = record_data_ipv6,
+                      subdomain = COMBINED_SUBDOMAIN,
+                      ip = ipv6,
+                      type='AAAA',
+                      ttl=60)
+
 
 if __name__ == "__main__":
     if DOMAIN_NAME is None:
@@ -112,4 +130,5 @@ if __name__ == "__main__":
         exit(1)
 
     main(set_ipv4 = True if IPV4_SUBDOMAIN is not None else False, 
-         set_ipv6 = True if IPV6_SUBDOMAIN is not None else False)
+         set_ipv6 = True if IPV6_SUBDOMAIN is not None else False,
+         combined_subdomain = True if COMBINED_SUBDOMAIN is not None else False)
