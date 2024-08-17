@@ -68,6 +68,12 @@ The `main.py` script will perform the following steps:
 
 You can schedule the `main.py` script to run periodically (e.g., using a cron job) to ensure your DNS records are always up to date.
 
+The script accept the following optional arguments:
+
+- `-v` or `--warning` to enable warning messages
+- `-vv` or `--info` to enable info messages
+- `-q` or `--quiet` to disable all messages
+
 ## Contributions
 
 Contributions to this project are welcome. If you encounter any issues or have suggestions for improvements, please create an issue or submit a pull request on the GitHub repository.
