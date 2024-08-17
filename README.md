@@ -42,9 +42,10 @@ cp .env.example .env
 5. Edit the `.env` file to include your specific configuration:
 
 ```dotenv
-DIGITALOCEAN_API_TOKEN=your_digital_ocean_api_token_here
-DOMAIN=example.com
-SUBDOMAIN=subdomain  # @ for root domain
+DOMAIN_NAME=example.com
+IPV4_SUBDOMAIN=subdomain  # @ for root domain
+IPV6_SUBDOMAIN=subdomain  # @ for root domain
+DIGITALOCEAN_TOKEN=your_digital_ocean_api_token_here
 ```
 
 ## Usage

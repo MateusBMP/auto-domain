@@ -3,8 +3,10 @@ import requests
 from ipaddress import ip_address, IPv4Address
 from pydo import Client
 
-SET_IPv4 = os.environ.get('SET_IPV4', 'True').lower() in ('true', '1', 't', 'yes', 'y', 'on')
-SET_IPv6 = os.environ.get('SET_IPV6', 'True').lower() in ('true', '1', 't', 'yes', 'y', 'on')
+DOMAIN_NAME = os.environ.get('DOMAIN_NAME', None)
+IPV4_SUBDOMAIN = os.environ.get('IPV4_SUBDOMAIN', None)
+IPV6_SUBDOMAIN = os.environ.get('IPV6_SUBDOMAIN', None)
+DIGITALOCEAN_TOKEN = os.environ.get('DIGITALOCEAN_TOKEN', None)
 
 def validIPAddress(IP: str) -> str:
     try:
@@ -12,7 +14,7 @@ def validIPAddress(IP: str) -> str:
     except ValueError:
         return "Invalid"
 
-def main():
+def main(set_ipv4: bool, set_ipv6: bool):
     # Retrieve IPv4 address
     r1 = requests.get("https://api.ipify.org?format=json")
 
@@ -41,8 +43,8 @@ def main():
     print("IPv6: " + str(ipv6))
 
     # Retrieve DigitalOcean records
-    client = Client(token=os.environ.get("DIGITALOCEAN_TOKEN"))
-    resp = client.domains.list_records(domain_name=os.environ.get("DOMAIN_NAME"))
+    client = Client(token=DIGITALOCEAN_TOKEN)
+    resp = client.domains.list_records(domain_name=DOMAIN_NAME)
 
     records = resp["domain_records"]
     record_id_ipv4 = None
@@ -51,13 +53,12 @@ def main():
     record_data_ipv6 = None
     # Find the record with the matching name
     for record in records:
-        if record["name"] == os.environ.get("SUBDOMAIN"):
-            if record["type"] == "A":
-                record_id_ipv4 = record["id"]
-                record_data_ipv4 = record["data"]
-            elif record["type"] == "AAAA":
-                record_id_ipv6 = record["id"]
-                record_data_ipv6 = record["data"]
+        if record["name"] == IPV4_SUBDOMAIN and record["type"] == "A":
+            record_id_ipv4 = record["id"]
+            record_data_ipv4 = record["data"]
+        elif record["name"] == IPV6_SUBDOMAIN and record["type"] == "AAAA":
+            record_id_ipv6 = record["id"]
+            record_data_ipv6 = record["data"]
 
     print("Record ID IPv4: " + str(record_id_ipv4))
     print("Record Data IPv4: " + str(record_data_ipv4))
@@ -65,43 +66,50 @@ def main():
     print("Record Data IPv6: " + str(record_data_ipv6))
 
     # Update DigitalOcean records
-    if SET_IPv4:
+    if set_ipv4:
         req_ipv4 = {
             "type": "A",
-            "name": os.environ.get("SUBDOMAIN"),
+            "name": IPV4_SUBDOMAIN,
             "data": ipv4,
             "ttl": 60,
         }
         if ipv4 and record_id_ipv4 is None:
-            client.domains.create_record(domain_name=os.environ.get("DOMAIN_NAME"), body=req_ipv4)
-            print("Created A " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + ipv4)
+            client.domains.create_record(domain_name=DOMAIN_NAME, body=req_ipv4)
+            print("Created A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv4)
         elif ipv4 and record_id_ipv4 is not None and record_data_ipv4 != ipv4:
-            client.domains.update_record(domain_name=os.environ.get("DOMAIN_NAME"), domain_record_id=record_id_ipv4, body=req_ipv4)
-            print("Updated A " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + ipv4)
+            client.domains.update_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv4, body=req_ipv4)
+            print("Updated A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv4)
         elif ipv4 is None and record_id_ipv4 is not None:
-            client.domains.delete_record(domain_name=os.environ.get("DOMAIN_NAME"), domain_record_id=record_id_ipv4)
-            print("Deleted A " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + record_data_ipv4)
-    else:
-        print("IPv4 record update disabled")
+            client.domains.delete_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv4)
+            print("Deleted A " + IPV4_SUBDOMAIN + "." + DOMAIN_NAME + " " + record_data_ipv4)
 
-    if SET_IPv6:
+    if set_ipv6:
         req_ipv6 = {
             "type": "AAAA",
-            "name": os.environ.get("SUBDOMAIN"),
+            "name": IPV6_SUBDOMAIN,
             "data": ipv6,
             "ttl": 60,
         }
         if ipv6 and record_id_ipv6 is None:
-            client.domains.create_record(domain_name=os.environ.get("DOMAIN_NAME"), body=req_ipv6)
-            print("Created AAAA " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + ipv6)
+            client.domains.create_record(domain_name=DOMAIN_NAME, body=req_ipv6)
+            print("Created AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv6)
         elif ipv6 and record_id_ipv6 is not None and record_data_ipv6 != ipv6:
-            client.domains.update_record(domain_name=os.environ.get("DOMAIN_NAME"), domain_record_id=record_id_ipv6, body=req_ipv6)
-            print("Updated AAAA " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + ipv6)
+            client.domains.update_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv6, body=req_ipv6)
+            print("Updated AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + ipv6)
         elif ipv6 is None and record_id_ipv6 is not None:
-            client.domains.delete_record(domain_name=os.environ.get("DOMAIN_NAME"), domain_record_id=record_id_ipv6)
-            print("Deleted AAAA " + os.environ.get("SUBDOMAIN") + "." + os.environ.get("DOMAIN_NAME") + " " + record_data_ipv6)
+            client.domains.delete_record(domain_name=DOMAIN_NAME, domain_record_id=record_id_ipv6)
+            print("Deleted AAAA " + IPV6_SUBDOMAIN + "." + DOMAIN_NAME + " " + record_data_ipv6)
     else:
         print("IPv6 record update disabled")
 
 if __name__ == "__main__":
-    main()
+    if DOMAIN_NAME is None:
+        print("DOMAIN_NAME is not set.")
+        exit(1)
+
+    if DIGITALOCEAN_TOKEN is None:
+        print("DIGITALOCEAN_TOKEN is not set.")
+        exit(1)
+
+    main(set_ipv4 = True if IPV4_SUBDOMAIN is not None else False, 
+         set_ipv6 = True if IPV6_SUBDOMAIN is not None else False)
