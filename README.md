@@ -49,7 +49,7 @@ IPV6_SUBDOMAIN=         # @ for root domain
 DIGITALOCEAN_TOKEN=your_digital_ocean_api_token_here
 ```
 
-> **Note:** Only set the `COMBINED_SUBDOMAIN` if you want to update both IPv4 and IPv6 records for the same subdomain. If you want to update separate subdomains for IPv4 and IPv6, leave `COMBINED_SUBDOMAIN` empty and set `IPV4_SUBDOMAIN` and `IPV6_SUBDOMAIN` accordingly.
+> **Note:** Only set `IPV4_SUBDOMAIN` or `IPV6_SUBDOMAIN` if you want to update the A or AAAA records specifically. If you want to update both to the same subdomain, set `COMBINED_SUBDOMAIN` instead.
 
 ## Usage
 
