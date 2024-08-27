@@ -1,10 +1,13 @@
-import os, requests, sys
+import os, requests, sys, random, socket, struct
 from ipaddress import ip_address, IPv4Address
 from pydo import Client
 from typing import Literal, TypeAlias
 
 # 0: quiet, 1: error, 2: warning, 3: info
 _VERBOSITY_LEVEL: TypeAlias = Literal[0, 1, 2, 3]
+
+# If true, mock DigitalOcean and IPify requests
+_MOCK: bool = False
 
 DOMAIN_NAME = os.environ.get('DOMAIN_NAME', None)
 IPV4_SUBDOMAIN = os.environ.get('IPV4_SUBDOMAIN', None)
@@ -24,6 +27,17 @@ def warning(message: str):
 def info(message: str):
     if VERBOSITY >= 3:
         print("Info: " + message)
+
+
+class Faker:
+    @staticmethod
+    def ipv4() -> str:
+        return socket.inet_ntoa(struct.pack('>I', random.randint(1, 0xffffffff)))
+    
+    @staticmethod
+    def ipv6() -> str:
+        return socket.inet_ntop(socket.AF_INET6, struct.pack('>QQ', random.randint(1, 0xffffffffffffffff), random.randint(1, 0xffffffffffffffff)))
+
 
 _IPType: TypeAlias = Literal["IPv4", "IPv6"]
 
@@ -86,12 +100,12 @@ class Record(object):
     def __str__(self):
         return (f"({self.id}) " if self.id is not None else "") + f"{self.type} {self.name} {self.data} TTL={self.ttl}"
 
-class Ipify:
-    IPV4_URL: str = "https://api.ipify.org?format=json"
-    IPV6_URL: str = "https://api64.ipify.org?format=json"
 
-    @staticmethod
-    def retrieve(type: _IPType) -> str | None:
+class Ipify:
+    IPV4_URL = "https://api.ipify.org?format=json"
+    IPV6_URL = "https://api64.ipify.org?format=json"
+
+    def retrieve(self, type: _IPType) -> str | None:
         url = Ipify.IPV4_URL if type == "IPv4" else Ipify.IPV6_URL
         r = requests.get(url, timeout=30)
         if r.status_code != 200:
@@ -103,19 +117,70 @@ class Ipify:
             return
         return ip
 
-def main():
-    # Retrieve IPv4 address
-    ipv4 = Ipify.retrieve("IPv4")
 
-    # Retrieve IPv6 address
-    ipv6 = Ipify.retrieve("IPv6")
+class Mock:
+    def __init__(self):
+        self.current_ipv4 = Faker.ipv4()
+        self.current_ipv6 = Faker.ipv6()
+
+    def make(self, cls):
+        if cls == Client:
+            return self.DigitalOceanClient(self)
+        elif cls == Ipify:
+            return self.IpifyAPI(self)
+        else:
+            raise ValueError(f"Mocking for {cls} is not supported.")
+
+    class DigitalOceanClient(Client):
+        def __init__(self, mock: 'Mock'):
+            self.domains = self.Domains(mock)
+            self.mock = mock
+
+        class Domains:
+            def __init__(self, mock: 'Mock'):
+                self.mock = mock
+
+            def list_records(self, domain_name: str):
+                return {
+                    "domain_records": [
+                        {"id": 1, "name": IPV4_SUBDOMAIN, "type": "A", "data": self.mock.current_ipv4, "ttl": 60},
+                        {"id": 2, "name": IPV6_SUBDOMAIN, "type": "AAAA", "data": self.mock.current_ipv6, "ttl": 60},
+                        {"id": 3, "name": COMBINED_SUBDOMAIN, "type": "A", "data": self.mock.current_ipv4, "ttl": 60},
+                    ]
+                }
+            
+            def create_record(self, domain_name: str, body: dict):
+                pass
+
+            def update_record(self, domain_name: str, domain_record_id: str, body: dict):
+                pass
+
+            def delete_record(self, domain_name: str, domain_record_id: str):
+                pass
+
+    class IpifyAPI(Ipify):
+        def __init__(self, mock: 'Mock'):
+            self.mock = mock
+
+        def retrieve(self, type: _IPType) -> str | None:
+            return self.mock.current_ipv4 if type == "IPv4" else self.mock.current_ipv6
+
+
+def main():
+    # Initialize mock object if mocking is enabled
+    mock = Mock() if _MOCK else None
+
+    # Retrieve IPv4 and IPv6 addresses
+    ipify = Ipify() if not _MOCK else mock.make(Ipify)
+    ipv4 = ipify.retrieve("IPv4")
+    ipv6 = ipify.retrieve("IPv6")
 
     info("Current IPv4: " + str(ipv4))
     info("Current IPv6: " + str(ipv6))
     info("Domain: " + DOMAIN_NAME)
 
     # Retrieve DigitalOcean records
-    client = Client(token=DIGITALOCEAN_TOKEN, timeout=30)
+    client = Client(token=DIGITALOCEAN_TOKEN, timeout=30) if not _MOCK else mock.make(Client)
     resp = client.domains.list_records(domain_name=DOMAIN_NAME)
     stored_records: list[Record] = []
     for record in resp['domain_records']:
@@ -144,23 +209,22 @@ def main():
 
     # Update DigitalOcean records
     for expected in expected_records:
-        stored = [record for record in stored_records if record.name == expected.name]
+        stored = [record for record in stored_records if (record.name == expected.name and record.type == expected.type)]
         if len(stored) == 0:
             expected.create(client, DOMAIN_NAME)
             info(f"Created: {expected}")
         else:
             for record in stored:
-                if record.type == expected.type:
-                    if record.data != expected.data:
-                        if expected.data is not None:
-                            expected.id = record.id
-                            expected.update(client, DOMAIN_NAME)
-                            info(f"Updated: {expected}")
-                        else:
-                            record.delete(client, DOMAIN_NAME)
-                            info(f"Deleted: {record}")
+                if record.data != expected.data:
+                    if expected.data is not None:
+                        expected.id = record.id
+                        expected.update(client, DOMAIN_NAME)
+                        info(f"Updated: {expected}")
                     else:
-                        info(f"No change: {record}")
+                        record.delete(client, DOMAIN_NAME)
+                        info(f"Deleted: {record}")
+                else:
+                    info(f"No change: {record}")
 
 
 if __name__ == "__main__":
@@ -172,6 +236,8 @@ if __name__ == "__main__":
             VERBOSITY = 3
         elif arg == "-q" or arg == "--quiet":
             VERBOSITY = 0
+        elif arg == "--mock":
+            _MOCK = True
 
     if DOMAIN_NAME is None:
         error("DOMAIN_NAME environment is not set.")
